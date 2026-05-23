@@ -71,13 +71,46 @@
       cursor: pointer;
       border-radius: 6px;
       margin: 2px 8px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       transition: background .15s, color .15s;
     }
     .conv-item:hover { background: #1e1e1e; color: #e8e8e8; }
     .conv-item.active { background: #252525; color: #fff; }
+
+    .conv-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .delete-btn {
+      background: transparent;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity .15s, color .15s, background-color .15s;
+    }
+    .conv-item:hover .delete-btn {
+      opacity: 1;
+    }
+    .delete-btn:hover {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.12);
+    }
+    .delete-btn svg {
+      pointer-events: none;
+    }
+
 
     /* ── Main ────────────────────────────────── */
     #main {
@@ -227,6 +260,34 @@
     #send-btn:hover { background: #0d8f6f; }
     #send-btn:disabled { opacity: .4; cursor: default; }
     #send-btn svg { color: #fff; }
+
+    #web-search-btn {
+      padding: 0 16px;
+      height: 34px;
+      background: transparent;
+      border: 1px solid #333;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      color: #777;
+      font-size: 14px;
+      font-family: inherit;
+      transition: all .2s;
+    }
+    #web-search-btn:hover {
+      background: #2a2a2a;
+      border-color: #555;
+      color: #aaa;
+    }
+    #web-search-btn.active {
+      border-color: #3b82f6;
+      color: #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+    }
+    #web-search-btn svg { stroke-width: 2; }
   </style>
 </head>
 <body>
@@ -256,6 +317,14 @@
 
   <div id="input-area">
     <div id="input-wrap">
+      <button id="web-search-btn" title="Activar búsqueda en la web">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+        <span>Search</span>
+      </button>
       <textarea id="msg-input" rows="1" placeholder="Escribe un mensaje…"></textarea>
       <button id="send-btn" disabled>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -268,13 +337,21 @@
 
 <script>
   let conversationId = null;
+  let webSearchEnabled = false;
 
   const messagesEl   = document.getElementById('messages');
   const emptyState   = document.getElementById('empty-state');
   const input        = document.getElementById('msg-input');
   const sendBtn      = document.getElementById('send-btn');
+  const webSearchBtn = document.getElementById('web-search-btn');
   const convList     = document.getElementById('conversations-list');
   const newChatBtn   = document.getElementById('new-chat-btn');
+
+  /* ── web search toggle ── */
+  webSearchBtn.addEventListener('click', () => {
+    webSearchEnabled = !webSearchEnabled;
+    webSearchBtn.classList.toggle('active', webSearchEnabled);
+  });
 
   /* ── auto-resize textarea ── */
   input.addEventListener('input', () => {
@@ -367,7 +444,12 @@
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, conversationId, stream: true }),
+        body: JSON.stringify({ 
+          message: text, 
+          conversationId, 
+          stream: true, 
+          webSearch: webSearchEnabled 
+        }),
       });
 
       if (!response.ok) {
@@ -383,35 +465,47 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
+      let buffer = '';
+      let chunkCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        chunkCount++;
+        const chunkText = decoder.decode(value, { stream: true });
+        console.log(`[Streaming Debug] Chunk #${chunkCount} recibido: ${value.length} bytes, texto longitud: ${chunkText.length}`);
+        
+        buffer += chunkText;
+        const parts = buffer.split('\n\n');
+        
+        // Conservar el último elemento (que podría estar incompleto) en el búfer
+        buffer = parts.pop();
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              
-              if (data.token) {
-                fullContent += data.token;
-                assistantBubble.textContent = fullContent;
-                messagesEl.scrollTop = messagesEl.scrollHeight;
-              }
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.token) {
+                  fullContent += data.token;
+                  assistantBubble.textContent = fullContent;
+                  messagesEl.scrollTop = messagesEl.scrollHeight;
+                }
 
-              if (data.done) {
-                conversationId = data.conversationId;
-                loadConversations();
-              }
+                if (data.done) {
+                  conversationId = data.conversationId;
+                  loadConversations();
+                }
 
-              if (data.error) {
-                assistantBubble.textContent += '\n⚠️ ' + data.error;
+                if (data.error) {
+                  assistantBubble.textContent += '\n⚠️ ' + data.error;
+                }
+              } catch (e) {
+                console.warn('[Streaming Debug] Error al analizar JSON parcial:', e);
               }
-            } catch (e) {
-              // Fragmento incompleto o JSON inválido, ignorar
             }
           }
         }
@@ -434,13 +528,57 @@
       list.forEach(conv => {
         const item = document.createElement('div');
         item.className = 'conv-item' + (conv.id === conversationId ? ' active' : '');
-        item.textContent = conv.title || 'Sin título';
         item.dataset.id = conv.id;
+
+        const titleEl = document.createElement('span');
+        titleEl.className = 'conv-title';
+        titleEl.textContent = conv.title || 'Sin título';
+        item.appendChild(titleEl);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.title = 'Eliminar conversación';
+        deleteBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
+          </svg>
+        `;
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteConversation(conv.id);
+        });
+        item.appendChild(deleteBtn);
+
         item.addEventListener('click', () => loadConversation(conv.id, item));
         convList.appendChild(item);
       });
     } catch {}
   }
+
+  async function deleteConversation(id) {
+    if (!confirm('¿Estás seguro de que quieres eliminar esta conversación?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/conversations/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        if (conversationId === id) {
+          newChat();
+        }
+        loadConversations();
+      } else {
+        alert('Error al eliminar la conversación.');
+      }
+    } catch (err) {
+      alert('Error de conexión al intentar eliminar la conversación.');
+    }
+  }
+
 
   async function loadConversation(id, itemEl) {
     conversationId = id;

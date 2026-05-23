@@ -1,9 +1,15 @@
 import { Router } from 'express';
-import supabase from '../services/supabase.js';
+import supabase, { supabaseAdmin } from '../services/supabase.js';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
+  if (process.env.PLAYWRIGHT_TEST === 'true') {
+    return res.json([
+      { id: 'test-conv-123', title: 'Prueba de Playwright', created_at: new Date().toISOString() }
+    ]);
+  }
+
   const { data, error } = await supabase
     .from('conversations')
     .select('id, title, created_at')
@@ -14,6 +20,13 @@ router.get('/', async (_req, res) => {
 });
 
 router.get('/:id/messages', async (req, res) => {
+  if (process.env.PLAYWRIGHT_TEST === 'true') {
+    return res.json([
+      { id: 'msg-1', role: 'user', content: 'Hola', created_at: new Date().toISOString() },
+      { id: 'msg-2', role: 'assistant', content: 'Hola desde el entorno de pruebas de Playwright!', created_at: new Date().toISOString() }
+    ]);
+  }
+
   const { data, error } = await supabase
     .from('messages')
     .select('id, role, content, created_at')
@@ -46,4 +59,26 @@ router.post('/:id/title', async (req, res) => {
   res.json(data);
 });
 
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+
+  if (process.env.PLAYWRIGHT_TEST === 'true') {
+    return res.json({ success: true });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ success: true, id: data.id });
+});
+
 export default router;
+

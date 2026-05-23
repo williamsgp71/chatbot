@@ -9,7 +9,7 @@ const openrouter = new OpenAI({
   },
 });
 
-export const MODEL_NAME = 'deepseek/deepseek-v4-flash:free';
+export const MODEL_NAME = 'deepseek/deepseek-v4-flash';
 
 export async function generateTitle(firstMessage) {
   try {
@@ -24,7 +24,8 @@ export async function generateTitle(firstMessage) {
       ],
       max_tokens: 25,
     });
-    return completion.choices[0].message.content.trim();
+    const content = completion.choices[0]?.message?.content;
+    return content ? content.trim() : 'Nueva Conversación';
   } catch (error) {
     console.error('Error in generateTitle (OpenRouter):', error);
     return 'Nueva Conversación';

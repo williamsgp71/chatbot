@@ -2,14 +2,18 @@ import { jest } from '@jest/globals';
 import request from 'supertest';
 
 // Mocking Supabase service for ESM
+const mockSupabase = {
+  from: jest.fn().mockReturnThis(),
+  update: jest.fn().mockReturnThis(),
+  delete: jest.fn().mockReturnThis(),
+  eq: jest.fn().mockReturnThis(),
+  select: jest.fn().mockReturnThis(),
+  single: jest.fn(),
+};
+
 jest.unstable_mockModule('../services/supabase.js', () => ({
-  default: {
-    from: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    select: jest.fn().mockReturnThis(),
-    single: jest.fn(),
-  },
+  default: mockSupabase,
+  supabaseAdmin: mockSupabase,
 }));
 
 // Use dynamic imports to ensure the mock is applied before the modules are loaded
@@ -56,3 +60,35 @@ describe('POST /api/conversations/:id/title', () => {
     expect(res.body.error).toBe('DB Error');
   });
 });
+
+describe('DELETE /api/conversations/:id', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('elimina la conversación correctamente', async () => {
+    const mockData = { id: '123' };
+    supabase.from().delete().eq().select().single.mockResolvedValue({ data: mockData, error: null });
+
+    const res = await request(app)
+      .delete('/api/conversations/123');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.id).toBe('123');
+    expect(supabase.from).toHaveBeenCalledWith('conversations');
+    expect(supabase.delete).toHaveBeenCalled();
+    expect(supabase.eq).toHaveBeenCalledWith('id', '123');
+  });
+
+  it('responde 500 si hay un error de base de datos', async () => {
+    supabase.from().delete().eq().select().single.mockResolvedValue({ data: null, error: { message: 'DB Error' } });
+
+    const res = await request(app)
+      .delete('/api/conversations/123');
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('DB Error');
+  });
+});
+

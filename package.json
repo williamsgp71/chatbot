@@ -6,6 +6,7 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:e2e": "playwright test",
     "update-titles": "node scripts/update-titles.js"
   },
   "dependencies": {
@@ -16,12 +17,16 @@
     "openai": "^4.98.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "jest": "^29.7.0",
     "supertest": "^7.1.0"
   },
   "jest": {
     "transform": {},
     "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "<rootDir>/tests/"
+    ],
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     }
